@@ -168,7 +168,7 @@ def publish_page(account_id: str, page_id: str):
 
     # "" slug = homepage => index.html
     file_slug = page.slug.strip("/") if page.slug else "index"
-    key = f"sites/{site.slug}/{file_slug}.html"
+    key = f"sites/{site.id}/{file_slug}.html"
     url = upload_html_to_s3(key, html)
 
     page = page_repo.update(page.id, {

@@ -50,6 +50,16 @@ def _page_from_item(item: Dict[str, Any]) -> Page:
         updated_at=item.get("updated_at", now_iso()),
     )
 
+def _slugify(value: str) -> str:
+    # simple slug normalize (Phase 1)
+    value = (value or "").strip().lower()
+    value = value.replace(" ", "-")
+    # remove characters that are risky in URLs
+    allowed = "abcdefghijklmnopqrstuvwxyz0123456789-"
+    value = "".join([c for c in value if c in allowed])
+    while "--" in value:
+        value = value.replace("--", "-")
+    return value.strip("-") or "site"
 
 class DynamoSiteRepository:
     """
@@ -63,6 +73,12 @@ class DynamoSiteRepository:
       gsi1pk = OWNER#{owner_account_id}
       gsi1sk = SITE#{site_id}
     """
+
+    def _slug_exists_for_owner(self, owner_account_id: str, slug: str) -> bool:
+        # Query all sites for owner via GSI1 and check for slug
+        sites = self.list_by_owner(owner_account_id)
+        return any(s.slug == slug for s in sites)
+
     def list_by_owner(self, owner_account_id: str) -> List[Site]:
         t = _sites_table()
         resp = t.query(
@@ -80,7 +96,15 @@ class DynamoSiteRepository:
 
     def create(self, owner_account_id: str, data: Dict[str, Any]) -> Site:
         site_id = generate_id()
-        slug = data.get("slug") or site_id.split("-")[0]
+        raw_slug = data.get("slug") or data.get("name") or site_id.split("-")[0]
+        base_slug = _slugify(raw_slug)
+
+        slug = base_slug
+        suffix = 2
+        while self._slug_exists_for_owner(owner_account_id, slug):
+            slug = f"{base_slug}-{suffix}"
+            suffix += 1
+
         now = now_iso()
 
         item = {
