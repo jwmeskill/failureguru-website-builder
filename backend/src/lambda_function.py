@@ -41,7 +41,17 @@ def lambda_handler(event, context):
         return response(200, {"ok": True})
 
     method = event.get("httpMethod", "")
-    path = event.get("path", "")
+    path = event.get("path", "") or ""
+
+    # If API Gateway includes the stage in the path (e.g. /prod/api/sites),
+    # strip it so our router consistently sees /api/sites.
+    stage = (event.get("requestContext") or {}).get("stage")
+    if stage:
+        prefix = f"/{stage}"
+        if path == prefix:
+            path = "/"
+        elif path.startswith(prefix + "/"):
+            path = path[len(prefix):]
     account_id = get_current_account_id(event)
 
     try:
