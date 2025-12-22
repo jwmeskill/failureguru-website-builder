@@ -4,9 +4,21 @@ from typing import Any, Dict
 from repositories_dynamo import DynamoSiteRepository, DynamoPageRepository
 from renderer import render_page_to_html
 from storage import upload_html_to_s3
+from decimal import Decimal
 
 site_repo = DynamoSiteRepository()
 page_repo = DynamoPageRepository()
+
+def _json_safe(obj):
+    """Convert DynamoDB Decimals (and nested structures) into JSON-safe types."""
+    if isinstance(obj, Decimal):
+        # If it's a whole number, return int; otherwise float
+        return int(obj) if obj % 1 == 0 else float(obj)
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    return obj
 
 def get_current_account_id(event: Dict[str, Any]) -> str:
     """
@@ -31,7 +43,7 @@ def response(status: int, body: Any):
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
         },
-        "body": json.dumps(body),
+        "body": json.dumps(_json_safe(body)),
     }
 
 
