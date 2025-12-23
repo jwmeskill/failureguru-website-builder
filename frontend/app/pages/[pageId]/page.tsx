@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getPage, updatePage, publishPage, Page } from "@/lib/api";
+
+import DndEditor from "@/components/Editor/DndEditor";
+import type { EditorStateV1 } from "@/lib/editorTypes";
 
 export default function EditorPage() {
   const params = useParams<{ pageId: string }>();
   const pageId = params.pageId;
 
   const [page, setPage] = useState<Page | null>(null);
-  const [draft, setDraft] = useState<any>(null);
+  const [draft, setDraft] = useState<EditorStateV1 | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -18,17 +23,20 @@ export default function EditorPage() {
     setErr(null);
     const p = await getPage(pageId);
     setPage(p);
-    setDraft(p.editor_state || { version: 1, title: p.name, sections: [] });
+
+    const nextDraft =
+      (p.editor_state as EditorStateV1) || ({ version: 1, title: p.name, sections: [] } as EditorStateV1);
+
+    setDraft(nextDraft);
+
+    // auto-select first block if any
+    const first = nextDraft.sections?.[0]?.blocks?.[0];
+    setSelectedBlockId(first?.id ?? null);
   }
 
   useEffect(() => {
     load().catch((e) => setErr(e.message));
   }, [pageId]);
-
-  const selectedSummary = useMemo(() => {
-    const blocks = (draft?.sections?.[0]?.blocks || []) as any[];
-    return `${blocks.length} block(s) in first section`;
-  }, [draft]);
 
   async function onSave() {
     if (!draft) return;
@@ -77,7 +85,9 @@ export default function EditorPage() {
           <div className="text-sm font-medium">{page.name}</div>
           <div className="text-xs text-gray-600">pageId: {pageId}</div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {err && <div className="text-sm text-red-600 mr-2">{err}</div>}
+
           <button
             onClick={onSave}
             disabled={saving}
@@ -85,6 +95,7 @@ export default function EditorPage() {
           >
             {saving ? "Saving…" : "Save"}
           </button>
+
           <button
             onClick={onPublish}
             disabled={publishing}
@@ -92,117 +103,22 @@ export default function EditorPage() {
           >
             {publishing ? "Publishing…" : "Publish"}
           </button>
+
           {page.published_html_url && (
-            <a
-              href={page.published_html_url}
-              target="_blank"
-              className="rounded-lg border px-3 py-2 text-sm"
-            >
+            <a href={page.published_html_url} target="_blank" className="rounded-lg border px-3 py-2 text-sm">
               Open published
             </a>
           )}
         </div>
       </div>
 
-      {/* 3-panel layout */}
-      <div className="grid grid-cols-12 gap-0">
-        {/* Left: Palette */}
-        <aside className="col-span-3 border-r p-4">
-          <div className="text-sm font-medium mb-2">Blocks</div>
-          <div className="text-xs text-gray-600">
-            (Drag/drop coming next) <br />
-            For now, you can edit the JSON directly.
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <button
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-              onClick={() => {
-                const next = structuredClone(draft);
-                next.sections = next.sections?.length ? next.sections : [{ id: "sec_1", layout: "full", blocks: [] }];
-                next.sections[0].blocks.push({
-                  id: `blk_${Date.now()}`,
-                  type: "text",
-                  props: { text: "New text block" },
-                });
-                setDraft(next);
-              }}
-            >
-              + Add Text Block
-            </button>
-            <button
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-              onClick={() => {
-                const next = structuredClone(draft);
-                next.sections = next.sections?.length ? next.sections : [{ id: "sec_1", layout: "full", blocks: [] }];
-                next.sections[0].blocks.push({
-                  id: `blk_${Date.now()}`,
-                  type: "hero",
-                  props: { headline: "New Hero", subheadline: "Edit me", ctaText: "CTA", ctaHref: "#" },
-                });
-                setDraft(next);
-              }}
-            >
-              + Add Hero Block
-            </button>
-          </div>
-        </aside>
-
-        {/* Center: Canvas preview */}
-        <section className="col-span-6 p-6 bg-gray-50 min-h-[calc(100vh-57px)]">
-          <div className="mx-auto max-w-2xl rounded-2xl border bg-white p-6 space-y-4">
-            <div className="text-xs text-gray-600">Preview (simple renderer for now)</div>
-            {(draft.sections?.[0]?.blocks || []).map((b: any) => {
-              if (b.type === "hero") {
-                return (
-                  <div key={b.id} className="rounded-xl border p-4">
-                    <div className="text-2xl font-semibold">{b.props?.headline}</div>
-                    <div className="text-sm text-gray-600 mt-1">{b.props?.subheadline}</div>
-                    <div className="mt-3">
-                      <a className="inline-block rounded-lg border bg-black px-3 py-2 text-sm text-white" href={b.props?.ctaHref || "#"}>
-                        {b.props?.ctaText || "CTA"}
-                      </a>
-                    </div>
-                  </div>
-                );
-              }
-              if (b.type === "text") {
-                return (
-                  <div key={b.id} className="rounded-xl border p-4 text-sm">
-                    {b.props?.text}
-                  </div>
-                );
-              }
-              return (
-                <div key={b.id} className="rounded-xl border p-4 text-sm text-gray-600">
-                  Unknown block type: {b.type}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Right: Inspector / JSON */}
-        <aside className="col-span-3 border-l p-4">
-          <div className="text-sm font-medium mb-2">Inspector</div>
-          <div className="text-xs text-gray-600 mb-3">{selectedSummary}</div>
-
-          <div className="text-xs font-medium mb-2">Raw editor_state (v1)</div>
-          <textarea
-            className="w-full h-[60vh] rounded-lg border p-2 text-xs font-mono"
-            value={JSON.stringify(draft, null, 2)}
-            onChange={(e) => {
-              try {
-                setDraft(JSON.parse(e.target.value));
-                setErr(null);
-              } catch {
-                setErr("JSON invalid (fix to enable save)");
-              }
-            }}
-          />
-          {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
-        </aside>
-      </div>
+      {/* Drag & Drop editor */}
+      <DndEditor
+        draft={draft}
+        setDraft={(next) => setDraft(next)}
+        selectedBlockId={selectedBlockId}
+        setSelectedBlockId={setSelectedBlockId}
+      />
     </main>
   );
 }
