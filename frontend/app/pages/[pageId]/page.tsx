@@ -52,6 +52,16 @@ export default function EditorPage() {
     }
   }
 
+  useEffect(() => {
+    if (!draft) return;
+    const blocks = draft.sections?.[0]?.blocks || [];
+    const exists = blocks.some((b) => b.id === selectedBlockId);
+
+    if (selectedBlockId && !exists) {
+      setSelectedBlockId(blocks[0]?.id ?? null);
+    }
+  }, [draft, selectedBlockId]);
+
   async function onPublish() {
     setPublishing(true);
     setErr(null);
